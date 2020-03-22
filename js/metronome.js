@@ -1,89 +1,92 @@
 var audioContext = null;
 var unlocked = false;
-var isPlaying = false;      // Are we currently playing?
-var startTime;              // The start time of the entire sequence.
-var current16thNote;        // What note is currently last scheduled?
-var tempo = 120.0;          // tempo (in beats per minute)
-var lookahead = 25.0;       // How frequently to call scheduling function 
-                            //(in milliseconds)
-var scheduleAheadTime = 0.1;    // How far ahead to schedule audio (sec)
-                            // This is calculated from lookahead, and overlaps 
-                            // with next interval (in case the timer is late)
-var nextNoteTime = 0.0;     // when the next note is due.
-var noteResolution = 0;     // 0 == 16th, 1 == 8th, 2 == quarter note
-var noteLength = 0.05;      // length of "beep" (in seconds)
-var canvas,                 // the canvas element
-    canvasContext;          // canvasContext is the canvas' context 2D
+var isPlaying = false; // Are we currently playing?
+var startTime; // The start time of the entire sequence.
+var current16thNote; // What note is currently last scheduled?
+var tempo = 120.0; // tempo (in beats per minute)
+var lookahead = 25.0; // How frequently to call scheduling function 
+//(in milliseconds)
+var scheduleAheadTime = 0.1; // How far ahead to schedule audio (sec)
+// This is calculated from lookahead, and overlaps 
+// with next interval (in case the timer is late)
+var nextNoteTime = 0.0; // when the next note is due.
+var noteResolution = 0; // 0 == 16th, 1 == 8th, 2 == quarter note
+var noteLength = 0.05; // length of "beep" (in seconds)
+var canvas, // the canvas element
+    canvasContext; // canvasContext is the canvas' context 2D
 var last16thNoteDrawn = -1; // the last "box" we drew on the screen
-var notesInQueue = [];      // the notes that have been put into the web audio,
-                            // and may or may not have played yet. {note, time}
-var timerWorker = null;     // The Web Worker used to fire timer messages
+var notesInQueue = []; // the notes that have been put into the web audio,
+// and may or may not have played yet. {note, time}
+var timerWorker = null; // The Web Worker used to fire timer messages
 
 
 // First, let's shim the requestAnimationFrame API, with a setTimeout fallback
-window.requestAnimFrame = (function(){
-    return  window.requestAnimationFrame ||
-    window.webkitRequestAnimationFrame ||
-    window.mozRequestAnimationFrame ||
-    window.oRequestAnimationFrame ||
-    window.msRequestAnimationFrame ||
-    function( callback ){
-        window.setTimeout(callback, 1000 / 60);
-    };
+window.requestAnimFrame = (function () {
+    return window.requestAnimationFrame ||
+        window.webkitRequestAnimationFrame ||
+        window.mozRequestAnimationFrame ||
+        window.oRequestAnimationFrame ||
+        window.msRequestAnimationFrame ||
+        function (callback) {
+            window.setTimeout(callback, 1000 / 60);
+        };
 })();
 
 function nextNote() {
     // Advance current note and time by a 16th note...
-    var secondsPerBeat = 60.0 / tempo;    // Notice this picks up the CURRENT 
-                                          // tempo value to calculate beat length.
-    nextNoteTime += 0.25 * secondsPerBeat;    // Add beat length to last beat time
+    var secondsPerBeat = 60.0 / tempo; // Notice this picks up the CURRENT 
+    // tempo value to calculate beat length.
+    nextNoteTime += 0.25 * secondsPerBeat; // Add beat length to last beat time
 
-    current16thNote++;    // Advance the beat number, wrap to zero
+    current16thNote++; // Advance the beat number, wrap to zero
     if (current16thNote == 16) {
         current16thNote = 0;
     }
 }
 
-function scheduleNote( beatNumber, time ) {
+function scheduleNote(beatNumber, time) {
     // push the note on the queue, even if we're not playing.
-    notesInQueue.push( { note: beatNumber, time: time } );
+    notesInQueue.push({
+        note: beatNumber,
+        time: time
+    });
 
-    if ( (noteResolution==1) && (beatNumber%2))
+    if ((noteResolution == 1) && (beatNumber % 2))
         return; // we're not playing non-8th 16th notes
-    if ( (noteResolution==2) && (beatNumber%4))
+    if ((noteResolution == 2) && (beatNumber % 4))
         return; // we're not playing non-quarter 8th notes
 
     // create an oscillator
     var osc = audioContext.createOscillator();
-    osc.connect( audioContext.destination );
-    if (beatNumber % 16 === 0)    // beat 0 == high pitch
+    osc.connect(audioContext.destination);
+    if (beatNumber % 16 === 0) // beat 0 == high pitch
         osc.frequency.value = 880.0;
-    else if (beatNumber % 4 === 0 )    // quarter notes = medium pitch
+    else if (beatNumber % 4 === 0) // quarter notes = medium pitch
         osc.frequency.value = 440.0;
-    else                        // other 16th notes = low pitch
+    else // other 16th notes = low pitch
         osc.frequency.value = 220.0;
 
-    osc.start( time );
-    osc.stop( time + noteLength );
+    osc.start(time);
+    osc.stop(time + noteLength);
 }
 
 function scheduler() {
     // while there are notes that will need to play before the next interval, 
     // schedule them and advance the pointer.
-    while (nextNoteTime < audioContext.currentTime + scheduleAheadTime ) {
-        scheduleNote( current16thNote, nextNoteTime );
+    while (nextNoteTime < audioContext.currentTime + scheduleAheadTime) {
+        scheduleNote(current16thNote, nextNoteTime);
         nextNote();
     }
 }
 
 function play() {
     if (!unlocked) {
-      // play silent buffer to unlock the audio
-      var buffer = audioContext.createBuffer(1, 1, 22050);
-      var node = audioContext.createBufferSource();
-      node.buffer = buffer;
-      node.start(0);
-      unlocked = true;
+        // play silent buffer to unlock the audio
+        var buffer = audioContext.createBuffer(1, 1, 22050);
+        var node = audioContext.createBufferSource();
+        node.buffer = buffer;
+        node.start(0);
+        unlocked = true;
     }
 
     isPlaying = !isPlaying;
@@ -99,13 +102,13 @@ function play() {
     }
 }
 
-function resetCanvas (e) {
+function resetCanvas(e) {
     // resize the canvas - but remember - this clears the canvas too.
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
     //make sure we scroll to the top left.
-    window.scrollTo(0,0); 
+    window.scrollTo(0, 0);
 }
 
 function draw() {
@@ -114,18 +117,36 @@ function draw() {
 
     while (notesInQueue.length && notesInQueue[0].time < currentTime) {
         currentNote = notesInQueue[0].note;
-        notesInQueue.splice(0,1);   // remove note from queue
+        notesInQueue.splice(0, 1); // remove note from queue
     }
 
     // We only need to draw if the note has moved.
     if (last16thNoteDrawn != currentNote) {
-        var x = Math.floor( canvas.width / 18 );
-        canvasContext.clearRect(0,0,canvas.width, canvas.height); 
-        for (var i=0; i<16; i++) {
-            canvasContext.fillStyle = ( currentNote == i ) ? 
-                ((currentNote%4 === 0)?"red":"blue") : "black";
-            canvasContext.fillRect( x * (i+1), x, x/2, x/2 );
+        var x = Math.floor(canvas.width / 18);
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+        
+        for (var i = 0; i < 16; i++) {
+
+            var noteWidth = x / 2;
+            var noteHeight = (x / 2);
+
+            var yOffset = 150;
+            //var noteHeight = (currentNote % 4 === 0) ? 200 : (x / 2);
+
+            canvasContext.fillStyle = (currentNote == i) ? ((currentNote % 4 === 0) ? "red" : "blue") : "black";
+            
+            if (i % 4 === 0) {
+                canvasContext.fillRect(x * (i + 1), x+yOffset, noteWidth, -200);
+                canvasContext.font = "50px Arial";
+                canvasContext.fillStyle = "green";
+                canvasContext.fillText((i / 4) + 1, x * (i + 1), x+yOffset+50);
+            } else if ( (i + 2) % 4 === 0 ) {
+                canvasContext.fillRect(x * (i + 1), x+yOffset, noteWidth, -100);
+            } else {
+                canvasContext.fillRect(x * (i + 1), x+yOffset, noteWidth, -50);
+            }
         }
+
         last16thNoteDrawn = currentNote;
     }
 
@@ -133,16 +154,16 @@ function draw() {
     requestAnimFrame(draw);
 }
 
-function init(){
-    var container = document.createElement( 'div' );
+function init() {
+    var container = document.createElement('div');
 
     container.className = "container";
-    canvas = document.createElement( 'canvas' );
-    canvasContext = canvas.getContext( '2d' );
-    canvas.width = window.innerWidth; 
-    canvas.height = window.innerHeight; 
-    document.body.appendChild( container );
-    container.appendChild(canvas);    
+    canvas = document.createElement('canvas');
+    canvasContext = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    document.body.appendChild(container);
+    container.appendChild(canvas);
     canvasContext.strokeStyle = "#ffffff";
     canvasContext.lineWidth = 2;
 
@@ -158,19 +179,20 @@ function init(){
     window.onorientationchange = resetCanvas;
     window.onresize = resetCanvas;
 
-    requestAnimFrame(draw);    // start the drawing loop.
+    requestAnimFrame(draw); // start the drawing loop.
 
     timerWorker = new Worker("js/metronomeworker.js");
 
-    timerWorker.onmessage = function(e) {
+    timerWorker.onmessage = function (e) {
         if (e.data == "tick") {
             // console.log("tick!");
             scheduler();
-        }
-        else
+        } else
             console.log("message: " + e.data);
     };
-    timerWorker.postMessage({"interval":lookahead});
+    timerWorker.postMessage({
+        "interval": lookahead
+    });
 }
 
-window.addEventListener("load", init );
+window.addEventListener("load", init);
